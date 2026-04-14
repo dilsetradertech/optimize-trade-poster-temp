@@ -25,7 +25,8 @@ load_dotenv()
 app = FastAPI(title="Auth")
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
+MSG91_TEMPLATE_ID= os.getenv("MSG91_TEMPLATE_ID")
+MSG91_API_KEY = os.getenv("MSG91_API_KEY")
 
 def generate_uuid():
     return str(uuid.uuid4())
