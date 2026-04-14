@@ -1,23 +1,47 @@
 import os
-import uuid
 import psycopg2
-import bcrypt
+from psycopg2.extras import RealDictCursor
+from dotenv import load_dotenv
 
-# ────────────────────────── PostgreSQL Connection
+# Load environment variables from .env file
+load_dotenv()
+
+# ────────────────────────── PostgreSQL Configuration
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
-POSTGRES_DB = os.getenv("POSTGRES_DB", "trade_options")
-POSTGRES_USER = os.getenv("POSTGRES_USER", "postgres")
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "root")
+POSTGRES_DB = os.getenv("POSTGRES_DB")
+POSTGRES_USER = os.getenv("POSTGRES_USER")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
 
+# Validate required environment variables
+required_vars = {
+    "POSTGRES_DB": POSTGRES_DB,
+    "POSTGRES_USER": POSTGRES_USER,
+    "POSTGRES_PASSWORD": POSTGRES_PASSWORD,
+}
+
+missing_vars = [key for key, value in required_vars.items() if not value]
+if missing_vars:
+    raise ValueError(f"❌ Missing required environment variables: {', '.join(missing_vars)}")
+
+# ────────────────────────── Database Connection
 def get_db_connection():
-    return psycopg2.connect(
-        host=POSTGRES_HOST,
-        database=POSTGRES_DB,
-        user=POSTGRES_USER,
-        password=POSTGRES_PASSWORD,
-        port="5432"
-    )
-
+    """Create and return a PostgreSQL database connection."""
+    try:
+        conn = psycopg2.connect(
+            dbname=POSTGRES_DB,
+            user=POSTGRES_USER,
+            password=POSTGRES_PASSWORD,
+            host=POSTGRES_HOST,
+            port=int(POSTGRES_PORT),
+        )
+        return conn
+    except psycopg2.OperationalError as e:
+        print(f"❌ PostgreSQL Operational Error: {e}")
+        raise
+    except Exception as e:
+        print(f"❌ Database connection failed: {e}")
+        raise
 
 def create_tables():
     try:

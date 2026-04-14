@@ -25,7 +25,8 @@ load_dotenv()
 app = FastAPI(title="Auth")
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
+MSG91_TEMPLATE_ID= os.getenv("MSG91_TEMPLATE_ID")
+MSG91_API_KEY = os.getenv("MSG91_API_KEY")
 
 def generate_uuid():
     return str(uuid.uuid4())
@@ -404,7 +405,7 @@ def verify_otp(data: VerifyOTP):
             raise HTTPException(status_code=404, detail="User not found")
 
         # Validate OTP
-        if user["otp"] != data.otp:
+        if user[1] != data.otp:
             raise HTTPException(status_code=400, detail="Invalid OTP")
 
         # Generate session token
@@ -427,9 +428,9 @@ def verify_otp(data: VerifyOTP):
         return {
             "message": "Login successful",
             "session_token": session_token,
-            "user_id": user["id"],
-            "username": user["username"],
-            "role": user["role_id"],
+            "user_id": user[0],
+            "username": user[3],
+            "role": user[2],
         }
 
     finally:
