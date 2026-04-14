@@ -12,13 +12,9 @@ from user.user_model import (
 )
 # Load environment variables
 load_dotenv()
-
-
 app = FastAPI(title="User Profile API")
 router = APIRouter()
 
-
-# Create Profile API
 @router.post("/profile", response_model=ProfileResponse, tags=["Profile Management"])
 async def create_user_profile(request: CreateProfileRequest):
 

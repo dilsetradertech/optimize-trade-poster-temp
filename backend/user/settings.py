@@ -14,8 +14,6 @@ telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
 app = FastAPI(title="Settings API")
 router = APIRouter()
 
-
-# Get Settings API
 @router.get("/settings/{user_id}", response_model=SettingsResponse, tags=["Settings Management"])
 async def get_user_settings(user_id: str):
     conn = get_db_connection()

@@ -15,3 +15,7 @@ app.include_router(profile.router)
 app.include_router(settings.router)
 app.include_router(upload_image.router)
 # app.include_router(user_model.router)
+
+@app.get("/")
+async def root():
+    return {"message": "Trade Poster is running!"}

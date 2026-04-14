@@ -47,7 +47,7 @@ def upload_image_to_s3(file: UploadFile, username: str) -> str:
 
 
 # Upload Image
-@router.post("/upload-image/{user_id}")
+@router.post("/upload-image/{user_id}", tags=["Profile Management"])
 async def upload_image(user_id: str, file: UploadFile = File(...)):
     conn = get_db_connection()
     cur = conn.cursor()

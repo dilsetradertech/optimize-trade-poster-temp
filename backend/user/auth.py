@@ -64,8 +64,84 @@ async def send_otp_msg91(mobile: str):
 
     return otp
 
+# Verify user session authentication
+def validate_session(user_id: str, session_token: str):
+    conn = get_db_connection()
+    cur = conn.cursor()
 
-# Endpoint to create a new user (admin or analyst)
+    cur.execute(
+        """SELECT session_expiry
+        FROM users
+        WHERE id = %s AND session_token = %s AND is_login = TRUE""", 
+        (user_id, session_token))
+
+    user = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid session")
+
+    expiry = user[0]
+
+    if expiry is None or expiry < datetime.utcnow():
+        raise HTTPException(status_code=401, detail="Session expired")
+    
+
+@router.post("/admin/create", tags=["User Management"])
+async def create_admin(data: AdminCreate):
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    admin_id = str(uuid.uuid4())[:8]
+    ist = pytz.timezone("Asia/Kolkata")
+    created_at = datetime.now(ist)
+
+    try:
+        cur.execute(
+            "SELECT id FROM users WHERE mobile = %s",
+            (data.mobile,)
+        )
+
+        if cur.fetchone():
+            raise HTTPException(status_code=400, detail="Mobile already exists")
+
+        hashed_password = hash_password(data.password)
+
+        cur.execute(
+            """INSERT INTO users (id, username, password, role_id, mobile, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s)""",
+            (
+                admin_id,
+                data.username,
+                hashed_password,
+                "admin",
+                data.mobile,
+                created_at,
+            )
+        )
+
+        conn.commit()
+
+        return {
+            "message": "Admin created successfully",
+            "admin_id": admin_id,
+            "username": data.username,
+            "mobile": data.mobile,
+            "created_at": created_at.strftime("%d-%m-%Y %I:%M %p"),
+            "role": "admin"
+        }
+        
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+
+    finally:
+        cur.close()
+        conn.close()
+
 @router.post("/analyst/create", tags=["User Management"])
 async def create_user(user: UserCreate):
     if user.role_id not in ["admin", "analyst"]:
@@ -123,34 +199,148 @@ async def create_user(user: UserCreate):
         cur.close()
         conn.close()
 
-
-# Verify user session authentication
-def validate_session(user_id: str, session_token: str):
+@router.delete("/roles/{role_id}", tags=["User Management"])
+async def delete_role(role_id: str):
     conn = get_db_connection()
     cur = conn.cursor()
 
-    cur.execute(
-        """SELECT session_expiry
-        FROM users
-        WHERE id = %s AND session_token = %s AND is_login = TRUE""", 
-        (user_id, session_token))
 
-    user = cur.fetchone()
+    role_exists = conn.execute(
+        "SELECT id FROM roles WHERE id = ?", (role_id,)
+    ).fetchone()
+    if not role_exists:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Role not found")
 
-    cur.close()
+    conn.execute("DELETE FROM users WHERE role_id = ?", (role_id,))
+    conn.execute("DELETE FROM roles WHERE id = ?", (role_id,))
     conn.close()
+    return {"message": f"Role '{role_id}' and associated users deleted"}
 
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid session")
 
-    expiry = user[0]
+# Delete analyst with settings and permissions
+@router.delete("/analyst/{user_id}", tags=["User Management"])
+async def delete_analyst(user_id: str):
 
-    if expiry is None or expiry < datetime.utcnow():
-        raise HTTPException(status_code=401, detail="Session expired")
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute("SELECT id FROM users WHERE id = %s", (user_id,))
+    user_exists = cur.fetchone()
+
+    if not user_exists:
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=404, detail="User not found")
+
+    try:
+        # Delete settings first (if exists)
+        cur.execute("DELETE FROM settings WHERE user_id = %s", (user_id,))
+
+        # Delete permissions
+        cur.execute("DELETE FROM permissions WHERE user_id = %s", (user_id,))
+
+        # Delete user
+        cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
+
+        conn.commit()
+        return {
+            "message": f"User '{user_id}', settings, and permissions deleted successfully"
+        }
+
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=f"Error: {str(e)}")
+
+    finally:
+        cur.close()
+        conn.close()
+
+@router.put("/update-role/{id}", tags=["User Management"])
+def update_role(
+    id: str,
+    role_id: Optional[str] = Query(None)
+):
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=DictCursor)
+
+    try:
+        # Get current role
+        cursor.execute(
+            "SELECT role_id FROM users WHERE id = %s",
+            (id,)
+        )
+        user = cursor.fetchone()
+
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        current_role = user["role_id"]
+
+        # Toggle logic
+        if current_role == "analyst":
+            new_role = "admin"
+        elif current_role == "admin":
+            new_role = "analyst"
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Role '{current_role}' cannot be changed"
+            )
+
+        # Update role
+        cursor.execute(
+            """UPDATE users 
+               SET role_id = %s,
+                   role_updated_at = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')
+                WHERE id = %s""",
+            (new_role, id)
+        )
+        conn.commit()
+
+        return {
+            "message": "Role updated successfully",
+            "id": id,
+            "old_role": current_role,
+            "new_role": new_role
+
+        }
+
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+    finally:
+        cursor.close()
+        conn.close()
+
+# Get all roles
+@router.get("/roles", tags=["User Management"])
+async def get_roles():
+
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, name FROM roles;")
+            roles = cur.fetchall()
+
+        if not roles:
+            raise HTTPException(status_code=404, detail="No roles found.")
+        
+        return [
+            {"role_id": r[0], "role_name": r[1]}
+            for r in roles
+            ]
     
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     
+    finally:
+        conn.close()
+
+
 # Send OTP for mobile login 
-@router.post("/login")
+@router.post("/login", tags=["Authentication"])
 async def login_mobile(data: MobileLogin):
 
     conn = get_db_connection()
@@ -192,45 +382,8 @@ async def login_mobile(data: MobileLogin):
         cur.close()
         conn.close()
 
-
-# Check if session is valid
-@router.get("/session-check")
-async def session_check(user_id: str):
-
-    conn = get_db_connection()
-    cur = conn.cursor()
-
-    try:
-        cur.execute(
-            """SELECT username, role_id, session_expiry
-               FROM users
-               WHERE id = %s AND is_login = TRUE""", 
-            (user_id,))
-
-        user = cur.fetchone()
-
-        if not user:
-            raise HTTPException(status_code=401, detail="Not logged in")
-
-        username, role, expiry = user
-
-        if expiry is None or expiry < datetime.utcnow():
-            raise HTTPException(status_code=401, detail="Session expired")
-
-        return {
-            "valid": True, 
-            "username": username,
-            "role": role,
-            "session_expiry": expiry
-        }
-
-    finally:
-        cur.close()
-        conn.close()
-
-
 # Verify OTP and login user
-@router.post("/verify-otp")
+@router.post("/verify-otp",tags=["Authentication"])
 def verify_otp(data: VerifyOTP):
 
     conn = get_db_connection()
@@ -285,7 +438,7 @@ def verify_otp(data: VerifyOTP):
 
 
 #Logout user and clean session
-@router.post("/logout")
+@router.post("/logout", tags=["Authentication"])
 async def logout(data: LogoutRequest):
 
     conn = get_db_connection()
@@ -306,9 +459,42 @@ async def logout(data: LogoutRequest):
 
     return {"message": "Logged out successfully"}
 
+@router.get("/session-check",tags=["Authentication"])
+async def session_check(user_id: str):
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    try:
+        cur.execute(
+            """SELECT username, role_id, session_expiry
+               FROM users
+               WHERE id = %s AND is_login = TRUE""", 
+            (user_id,))
+
+        user = cur.fetchone()
+
+        if not user:
+            raise HTTPException(status_code=401, detail="Not logged in")
+
+        username, role, expiry = user
+
+        if expiry is None or expiry < datetime.utcnow():
+            raise HTTPException(status_code=401, detail="Session expired")
+
+        return {
+            "valid": True, 
+            "username": username,
+            "role": role,
+            "session_expiry": expiry
+        }
+
+    finally:
+        cur.close()
+        conn.close()
 
 # Get list of all Users
-@router.get("/users", tags=["Users"])
+@router.get("/users", tags=["User Management"])
 async def get_users():
 
     conn = get_db_connection()
@@ -393,91 +579,6 @@ async def get_analysts():
     
     finally:
         conn.close()
-
-
-# Delete role
-@router.delete("/roles/{role_id}", tags=["Analyst"])
-async def delete_role(role_id: str):
-    conn = get_db_connection()
-    cur = conn.cursor()
-
-
-    role_exists = conn.execute(
-        "SELECT id FROM roles WHERE id = ?", (role_id,)
-    ).fetchone()
-    if not role_exists:
-        conn.close()
-        raise HTTPException(status_code=404, detail="Role not found")
-
-    conn.execute("DELETE FROM users WHERE role_id = ?", (role_id,))
-    conn.execute("DELETE FROM roles WHERE id = ?", (role_id,))
-    conn.close()
-    return {"message": f"Role '{role_id}' and associated users deleted"}
-
-
-# Delete analyst with settings and permissions
-@router.delete("/analyst/{user_id}", tags=["User Management"])
-async def delete_analyst(user_id: str):
-
-    conn = get_db_connection()
-    cur = conn.cursor()
-
-    cur.execute("SELECT id FROM users WHERE id = %s", (user_id,))
-    user_exists = cur.fetchone()
-
-    if not user_exists:
-        cur.close()
-        conn.close()
-        raise HTTPException(status_code=404, detail="User not found")
-
-    try:
-        # Delete settings first (if exists)
-        cur.execute("DELETE FROM settings WHERE user_id = %s", (user_id,))
-
-        # Delete permissions
-        cur.execute("DELETE FROM permissions WHERE user_id = %s", (user_id,))
-
-        # Delete user
-        cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
-
-        conn.commit()
-        return {
-            "message": f"User '{user_id}', settings, and permissions deleted successfully"
-        }
-
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(status_code=400, detail=f"Error: {str(e)}")
-
-    finally:
-        cur.close()
-        conn.close()
-
-
-# Get all roles
-@router.get("/roles", tags=["Analyst"])
-async def get_roles():
-
-    conn = get_db_connection()
-    try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id, name FROM roles;")
-            roles = cur.fetchall()
-
-        if not roles:
-            raise HTTPException(status_code=404, detail="No roles found.")
-        
-        return [
-            {"role_id": r[0], "role_name": r[1]}
-            for r in roles
-            ]
-    
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    
-    finally:
-        conn.close()
-
 
 # Update user permissions and login access
 @router.patch("/analyst/{user_id}/permissions", tags=["Analyst Permissions"])
@@ -630,119 +731,5 @@ async def get_user_permissions(user_id: str):
         cur.close()
         conn.close()
 
-
-# Create admin 
-@router.post("/admin/create", tags=["User Management"])
-async def create_admin(data: AdminCreate):
-
-    conn = get_db_connection()
-    cur = conn.cursor()
-
-    admin_id = str(uuid.uuid4())[:8]
-    ist = pytz.timezone("Asia/Kolkata")
-    created_at = datetime.now(ist)
-
-    try:
-        cur.execute(
-            "SELECT id FROM users WHERE mobile = %s",
-            (data.mobile,)
-        )
-
-        if cur.fetchone():
-            raise HTTPException(status_code=400, detail="Mobile already exists")
-
-        hashed_password = hash_password(data.password)
-
-        cur.execute(
-            """INSERT INTO users (id, username, password, role_id, mobile, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s)""",
-            (
-                admin_id,
-                data.username,
-                hashed_password,
-                "admin",
-                data.mobile,
-                created_at,
-            )
-        )
-
-        conn.commit()
-
-        return {
-            "message": "Admin created successfully",
-            "admin_id": admin_id,
-            "username": data.username,
-            "mobile": data.mobile,
-            "created_at": created_at.strftime("%d-%m-%Y %I:%M %p"),
-            "role": "admin"
-        }
-        
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
-
-    finally:
-        cur.close()
-        conn.close()
-
-
-# Update role
-@router.put("/update-role/{id}", tags=["User Management"])
-def update_role(
-    id: str,
-    role_id: Optional[str] = Query(None)
-):
-    conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=DictCursor)
-
-    try:
-        # Get current role
-        cursor.execute(
-            "SELECT role_id FROM users WHERE id = %s",
-            (id,)
-        )
-        user = cursor.fetchone()
-
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-
-        current_role = user["role_id"]
-
-        # Toggle logic
-        if current_role == "analyst":
-            new_role = "admin"
-        elif current_role == "admin":
-            new_role = "analyst"
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Role '{current_role}' cannot be changed"
-            )
-
-        # Update role
-        cursor.execute(
-            """UPDATE users 
-               SET role_id = %s,
-                   role_updated_at = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')
-                WHERE id = %s""",
-            (new_role, id)
-        )
-        conn.commit()
-
-        return {
-            "message": "Role updated successfully",
-            "id": id,
-            "old_role": current_role,
-            "new_role": new_role
-
-        }
-
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-
-    finally:
-        cursor.close()
-        conn.close()
 
 
