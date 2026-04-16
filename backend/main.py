@@ -1,18 +1,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from user import (
-    auth,
-    profile,
-    settings,
-    upload_image,  
-)
+from user import (auth, profile, settings, upload_image)
 from instrument import instrument
 from token_management import token
 from ltp import ltp
 from telegram_channel_manage import channel_route
-
+from monitoring import stop_monitoring
 
 app = FastAPI()
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -28,7 +24,9 @@ app.include_router(instrument.router)
 app.include_router(token.router)
 app.include_router(ltp.router)
 app.include_router(channel_route.router)
-# app.include_router(user_model.router)
+app.include_router(stop_monitoring.router)
+app.include_router(channel_route.router)
+
 
 @app.get("/")
 async def root():
