@@ -4,8 +4,7 @@ import httpx
 import os
 from dotenv import load_dotenv
 from pydantic import BaseModel
-from helpers.getlatestToken import get_latest_token
-
+from ltp.getlatestToken import get_latest_token
 load_dotenv()
 
 ACCESS_TOKEN = get_latest_token()

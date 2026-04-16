@@ -34,7 +34,6 @@ def get_db_connection():
             password=POSTGRES_PASSWORD,
             host=POSTGRES_HOST,
             port=int(POSTGRES_PORT),
-            cursor_factory=RealDictCursor
         )
         print("✅ Database connected successfully")
         return conn

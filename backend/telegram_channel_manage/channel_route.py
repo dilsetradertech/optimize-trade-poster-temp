@@ -8,6 +8,7 @@ from psycopg2 import errors
 from models.createdb import get_db_connection
 from telegram_channel_manage.channel_model import ( ChannelCreate, ChannelUpdate)
 
+
 load_dotenv()
 router = APIRouter()
 
@@ -35,7 +36,7 @@ async def fetch_channel_name(channel_id: str):
         description = data.get("description", "").lower()
 
         if "chat not found" in description:
-            msg = "Bot not authorized to access this "channel"
+            msg = "Bot not authorized to access this "
         elif "unauthorized" in description or "Invalid" in description:
             msg = "Invalid Telegram Token. Please update your TELEGRAM_TOKEN."  
         else:
@@ -109,7 +110,13 @@ async def get_all_channels():
         cur.execute("SELECT * FROM telegram_channels ORDER BY id DESC;")
         rows = cur.fetchall()
 
-    return {"status": True, "data": [dict(row) for row in rows]}
+        # Extract column names from cursor
+        columns = [desc[0] for desc in cur.description]
+
+        # Convert each row tuple to a dictionary
+        data = [dict(zip(columns, row)) for row in rows]
+
+    return {"status": True, "data": data}
 
 # ─────────────────────────────────────────────
 # 🔹 Get Single Channel by channel_id
