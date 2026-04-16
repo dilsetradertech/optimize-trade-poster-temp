@@ -35,7 +35,6 @@ def get_db_connection():
             host=POSTGRES_HOST,
             port=int(POSTGRES_PORT),
         )
-        print("✅ Database connected successfully")
         return conn
     except psycopg2.OperationalError as e:
         print(f"❌ PostgreSQL Operational Error: {e}")

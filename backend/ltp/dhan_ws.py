@@ -7,8 +7,8 @@ import psycopg2
 import websockets
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
-# from websockets.exceptions import ConnectionClosed
-# from bg_monitoring import process_trade_logic
+from websockets.exceptions import ConnectionClosed
+from monitoring.bg_monitoring import process_trade_logic
 
 LTP_QUEUE: asyncio.Queue = asyncio.Queue(maxsize=5000)
 LISTENER_LOCK = asyncio.Lock()
