@@ -405,7 +405,7 @@ def verify_otp(data: VerifyOTP):
             raise HTTPException(status_code=404, detail="User not found")
 
         # Validate OTP
-        if user["otp"] != data.otp:
+        if user[1] != data.otp:
             raise HTTPException(status_code=400, detail="Invalid OTP")
 
         # Generate session token
@@ -428,9 +428,9 @@ def verify_otp(data: VerifyOTP):
         return {
             "message": "Login successful",
             "session_token": session_token,
-            "user_id": user["id"],
-            "username": user["username"],
-            "role": user["role_id"],
+            "user_id": user[0],
+            "username": user[3],
+            "role": user[2],
         }
 
     finally:
