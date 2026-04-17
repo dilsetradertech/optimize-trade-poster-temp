@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 import uuid, json
-from routes.send_trade import send_trade, TradeData, get_db_connection, _telegram_send_multiple
+from send_trade.sendTradeRoute import send_trade, TradeData, get_db_connection, _telegram_send_multiple
 
 router = APIRouter()
 

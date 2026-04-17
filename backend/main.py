@@ -7,10 +7,10 @@ from token_management import token
 from ltp import ltp,dhan_ws
 from telegram_channel_manage import channel_route
 from monitoring import stop_monitoring
-from send_trade import sendTradeRoute
+from send_trade import (sendTradeRoute,repost)
 from history import trade
 from helpers import draft
-
+from helpers import reason
 
 
 app = FastAPI()
@@ -33,8 +33,10 @@ app.include_router(channel_route.router)
 app.include_router(stop_monitoring.router)
 app.include_router(channel_route.router)
 app.include_router(sendTradeRoute.router)
+app.include_router(repost.router)
 app.include_router(trade.router)
 app.include_router(draft.router)
+app.include_router(reason.router)
 
 
 @app.on_event("startup")
