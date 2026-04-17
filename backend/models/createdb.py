@@ -291,7 +291,7 @@ def create_tables():
         conn.commit()
         cur.close()
         conn.close()
-        print("✅ Database tables created successfully.")
+        print(" Database tables created successfully.")
 
     except Exception as e:
-        print("❌ Error creating tables:", e)
+        print(" Error creating tables:", e)
