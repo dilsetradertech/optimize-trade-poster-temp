@@ -11,6 +11,8 @@ from send_trade import (sendTradeRoute,repost)
 from history import trade
 from helpers import draft
 from helpers import reason
+from analytics import analytics
+from HitDashboard import target_hit ,stoploss_hit
 
 
 app = FastAPI()
@@ -37,6 +39,10 @@ app.include_router(repost.router)
 app.include_router(trade.router)
 app.include_router(draft.router)
 app.include_router(reason.router)
+app.include_router(analytics.router) 
+app.include_router(target_hit.router) 
+app.include_router(stoploss_hit.router) 
+
 
 
 @app.on_event("startup")
