@@ -22,7 +22,7 @@ router = APIRouter(tags=["Trades"])
     "/trade_history",
     response_model=list[TradeHistory],
     summary="Trades with target hits for the chosen calendar day",
-    tags=["target hits"],
+    tags=["Hit Dashboard"],
 )
 def get_trade_history(
     trade_date: date = Query(
@@ -68,7 +68,7 @@ def get_trade_history(
 
     response_model=list[dict],
     summary="Telegram trades with final target duration",
-    tags=["target hits"],
+    tags=["Hit Dashboard"],
 )
 def get_telegram_target_hits(
     user_id: str = Query(...),

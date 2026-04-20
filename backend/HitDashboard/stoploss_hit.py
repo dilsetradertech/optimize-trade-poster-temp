@@ -25,7 +25,7 @@ router = APIRouter(tags=["Trades"])
     "/stoploss_history/all",
     response_model=list[dict],
     summary="Trades with stoploss hit for the chosen calendar day with duration",
-    tags=["stoploss hits"],
+    tags=["Hit Dashboard"],
 )
 def get_stoploss_history_all(
     trade_date: date = Query(
@@ -101,7 +101,7 @@ def get_stoploss_history_all(
     "/stoploss_history/user",
     response_model=list[dict],
     summary="User-wise SL hit trades with duration",
-    tags=["stoploss hits"],
+    tags=["Hit Dashboard"],
 )
 def get_stoploss_history_user(
     trade_date: date = Query(..., alias="start_date"),

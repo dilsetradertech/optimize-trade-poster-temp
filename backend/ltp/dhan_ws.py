@@ -528,7 +528,7 @@ async def auto_start_ws():
 # ==============================
 # DEBUG / STATUS ROUTES
 # ==============================
-@router.get("/ws-ltp")
+@router.get("/ws-ltp",tags=["Websocket Management"])
 async def test_ltp():
     async def run_test():
         ws = await get_dhan_ws()
@@ -566,7 +566,7 @@ async def test_ltp():
     return {"message": "Subscription started."}
 
 
-@router.get("/ws/test")
+@router.get("/ws/test",tags=["Websocket Management"])
 async def test_ws():
     return {
         "message": "Dhan WS route is active",
@@ -575,7 +575,7 @@ async def test_ws():
         "listener_running": DHAN_LISTENER_STARTED,
     }
 
-@router.get("/ws/status")
+@router.get("/ws/status",tags=["Websocket Management"])
 async def ws_status():
     listener_alive = LISTENER_TASK is not None and not LISTENER_TASK.done()
     worker_alive = WORKER_TASK is not None and not WORKER_TASK.done()
@@ -593,7 +593,7 @@ async def ws_status():
         "ws_connected": DHAN_WS is not None,
     }
 
-@router.post("/ws/refresh")
+@router.post("/ws/refresh",tags=["Websocket Management"])
 async def refresh_ws():
     global DHAN_WS, DHAN_SUBSCRIBED, SECURITY_SEGMENT_MAP
     global LISTENER_TASK, WORKER_TASK, WATCHDOG_TASK

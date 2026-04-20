@@ -16,6 +16,7 @@ import duckdb
 
 
 
+
 load_dotenv()
 app = FastAPI()
 
@@ -28,7 +29,8 @@ POSTGRES_DB = os.getenv("POSTGRES_DB")
 POSTGRES_USER = os.getenv("POSTGRES_USER")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
 
-
+duck_conn = duckdb.connect("options_trade_poster.db")
+duck_cursor = duck_conn.cursor()
 # Function to get DB connection (Sync)
 def get_db():
     return psycopg2.connect(
@@ -188,7 +190,7 @@ def get_trades(
         conn.close()
 
 
-@router.get("/history/all")
+# @router.get("/history/all")
 def get_active_trades(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
@@ -340,7 +342,7 @@ def get_active_trades(
         cursor.close()
         conn.close()
 
-@router.get("/history/all-page")
+@router.get("/history/all")
 def get_active_trades(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
@@ -421,9 +423,6 @@ def get_active_trades(
         scrips = []
 
         if instrument_name:
-            duck_conn = duckdb.connect("options_trade_poster.db")
-            duck_cursor = duck_conn.cursor()
-
             duck_cursor.execute("""
                 SELECT DISTINCT SEM_CUSTOM_SYMBOL 
                 FROM instruments 
@@ -445,10 +444,20 @@ def get_active_trades(
             query += " AND " + " AND ".join(filters)
 
         # ✅ TOTAL COUNT (before LIMIT)
-        count_query = "SELECT COUNT(*) FROM (" + query + ") AS total_count"
+        count_query = """
+        SELECT COUNT(*) 
+        FROM trade_history th
+        WHERE EXISTS (
+            SELECT 1 FROM trade_targets tt
+            WHERE tt.trade_id = th.id
+            AND tt.is_monitoring_complete = TRUE
+        )
+        """
+        if filters:
+            count_query += " AND " + " AND ".join(filters)
+
         cursor.execute(count_query, tuple(values))
         total_count = cursor.fetchone()[0]
-
         # ✅ PAGINATION
         offset = (page - 1) * page_size
         query += " ORDER BY th.created_at DESC LIMIT %s OFFSET %s"
@@ -457,8 +466,8 @@ def get_active_trades(
         trades = cursor.fetchall()
 
         # ✅ Response
-        return [
-            {
+        return {
+            "data": [{
                 "id": row[0],
                 "scrip": row[1],
                 "tradeType": row[2],
@@ -494,8 +503,13 @@ def get_active_trades(
                 "time_diff": row[24]
             }
             for row in trades
-        ]
-
+            ],
+             "total": total_count,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (total_count + page_size - 1) // page_size
+        }
+    
     finally:
         cursor.close()
         conn.close()
