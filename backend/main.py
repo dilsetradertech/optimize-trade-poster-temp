@@ -12,10 +12,15 @@ from history import trade
 from helpers import draft
 from helpers import reason
 from analytics import analytics
+import asyncio
 from HitDashboard import target_hit ,stoploss_hit
+from monitoring.bg_monitoring import delayed_message_worker
+import duckdb
 
 
 app = FastAPI()
+duck_conn = None
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -45,6 +50,11 @@ app.include_router(target_hit.router)
 app.include_router(stoploss_hit.router) 
 
 
+@app.on_event("startup")
+async def startup():
+    global duck_conn
+    duck_conn = duckdb.connect("options_trade_poster.db")
+    asyncio.create_task(delayed_message_worker())    
 
 @app.on_event("startup")
 async def startup_event():

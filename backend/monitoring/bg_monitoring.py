@@ -2,6 +2,7 @@ import psycopg2
 import os,random,pytz
 from datetime import datetime, timedelta, time
 from fastapi import APIRouter
+import asyncio
 from models.createdb import get_db_connection
 
 async def check_and_stop_ws_if_needed():
@@ -185,7 +186,7 @@ async def process_trade_logic(security_id: int, ltp: float):
             if stop_time and current_time >= stop_time:
                 updates.append("is_monitoring_complete = TRUE")
                 updates.append("updated_at = NOW()")
-                
+            
         hit_time = datetime.now(IST)
         # ── TARGETS ──
         if not t1_hit:
@@ -209,7 +210,15 @@ async def process_trade_logic(security_id: int, ltp: float):
 
                             print(f"🎯 T1 hit for {trade_id} at LTP {ltp} at {hit_time}")
 
-                            await notify_trade_update(trade_id, "T1", ltp)
+                            with get_db_connection() as conn:
+                                with conn.cursor() as cur:
+                                    cur.execute("""
+                                        INSERT INTO target_hit_delay
+                                        (trade_id, level, price, scheduled_time, is_sent, created_at)
+                                        VALUES (%s, %s, %s, NOW() + interval '2 minutes', FALSE, NOW())
+                                    """, (trade_id, "T1", ltp))
+
+                                    conn.commit()
 
         if not t2_hit:
             if (not is_short and ltp >= t2) or (is_short and ltp <= t2):
@@ -231,8 +240,16 @@ async def process_trade_logic(security_id: int, ltp: float):
 
                             print(f"🎯 T2 hit for {trade_id} at LTP {ltp} at {hit_time}")
 
-                            await notify_trade_update(trade_id, "T2", ltp)
+                            with get_db_connection() as conn:
+                                with conn.cursor() as cur:
+                                    cur.execute("""
+                                        INSERT INTO target_hit_delay
+                                        (trade_id, level, price, scheduled_time, is_sent, created_at()
+                                        VALUES (%s, %s, %s, NOW() + interval '2 minutes', FALSE, NOW())
+                                    """, (trade_id, "T2", ltp))
 
+                                    conn.commit()
+                                   
         if not t3_hit:
             if (not is_short and ltp >= t3) or (is_short and ltp <= t3):
 
@@ -269,7 +286,15 @@ async def process_trade_logic(security_id: int, ltp: float):
                                     )
                                     conn2.commit()
 
-                            await notify_trade_update(trade_id, "T3", ltp)
+                            with get_db_connection() as conn:
+                                with conn.cursor() as cur:
+                                    cur.execute("""
+                                        INSERT INTO target_hit_delay
+                                        (trade_id, level, price, scheduled_time, is_sent, created_at)
+                                        VALUES (%s, %s, %s, NOW() + interval '2 minutes', FALSE, NOW())
+                                    """, (trade_id, "T3", ltp))
+
+                                    conn.commit()
 
                 stop_monitoring = True
 
@@ -314,7 +339,15 @@ async def process_trade_logic(security_id: int, ltp: float):
 
                             # ── YOUR EXISTING LOGIC ──
                             if not t1_hit:
-                                await notify_trade_update(trade_id, "SL", ltp)
+                                with get_db_connection() as conn: 
+                                    with conn.cursor() as cur:
+                                        cur.execute("""
+                                            INSERT INTO target_hit_delay
+                                            (trade_id, level, price, scheduled_time, is_sent, created_at)
+                                            VALUES (%s, %s, %s, NOW() + interval '2 minutes', FALSE, NOW())
+                                        """, (trade_id, "SL", ltp))
+
+                                        conn.commit()
 
                             elif t1_hit and not t2_hit:
                                 await send_trade_update_to_algoapp(trade_id, "SL", ltp)
@@ -351,3 +384,40 @@ async def process_trade_logic(security_id: int, ltp: float):
                     conn.commit()
                     if stop_monitoring: 
                         print(f"💾 Updated Trade {trade_id}")
+
+
+async def delayed_message_worker():
+    while True:
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT id, trade_id, level, price
+                        FROM target_hit_delay
+                        WHERE is_sent = FALSE
+                        AND scheduled_time <= NOW()
+                    """)
+                    rows = cur.fetchall()
+
+            for row in rows:
+                delay_id, trade_id, level, price = row
+
+                try:
+                    await notify_trade_update(trade_id, level, price)
+
+                    with get_db_connection() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute("""
+                                UPDATE target_hit_delay
+                                SET is_sent = TRUE
+                                WHERE id = %s
+                            """, (delay_id,))
+                            conn.commit()
+
+                except Exception as e:
+                    print("❌ send error:", e)
+
+        except Exception as e:
+            print("❌ worker loop error:", e)
+
+        await asyncio.sleep(5)
